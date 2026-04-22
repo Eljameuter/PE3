@@ -27,10 +27,10 @@ from pytrinamic.modules import TMCM6110
 COM_PORT = "COM6"
 AXIS_INDEX = 0                 # motor index used in your example
 FULL_RANGE_MM = 10           # total travel range of stage in mm
-STEP_MM = 1                  # move in 1 mm increments
-STEPS_PER_MM = 1/5e-7
+STEP_MM = 0.5                  # move in 1 mm increments
+STEPS_PER_MM = int(1e-3/(0.5e-9*8))
 
-SETTLE_TIME = 0.05             # seconds after move before image capture
+SETTLE_TIME = 0.5             # seconds after move before image capture
 GRAB_TIMEOUT = 3000           # ms
 SAVE_FOLDER = "scan_images"
 
