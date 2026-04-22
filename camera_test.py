@@ -1,5 +1,5 @@
 """This sample shows how grabbed images can be saved using pypylon only (no
-need to use openCV). 
+need to use openCV).
 
 Available image formats are     (depending on platform):
  - pylon.ImageFileFormat_Bmp    (Windows)
