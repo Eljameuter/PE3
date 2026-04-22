@@ -46,20 +46,26 @@ def wait_until_position_reached(motor):
         time.sleep(0.05)
 
 
+
 def save_image(camera, filename):
+    # Apply best-found settings (first tested settings)
+    camera.ExposureTime.SetValue(100)   # microseconds
+    camera.Gain.SetValue(0)            # dB
+
     with camera.RetrieveResult(GRAB_TIMEOUT) as result:
         if result.GrabSucceeded():
             img = pylon.PylonImage()
             img.AttachGrabResultBuffer(result)
 
-            if platform.system() == "Windows":
-                img.Save(pylon.ImageFileFormat_Png, filename)
-            else:
-                img.Save(pylon.ImageFileFormat_Png, filename)
+            ipo = pylon.ImagePersistenceOptions()
+            ipo.SetQuality(90)
+
+            img.Save(pylon.ImageFileFormat_Png, filename)
 
             img.Release()
         else:
             raise RuntimeError("Image grab failed")
+
 
 
 # ==========================================================
