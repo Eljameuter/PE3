@@ -26,7 +26,7 @@ from pytrinamic.modules import TMCM6110
 # ==========================================================
 COM_PORT = "COM6"
 AXIS_INDEX = 0                 # motor index used in your example
-FULL_RANGE_MM = 10           # total travel range of stage in mm
+FULL_RANGE_MM = 6          # total travel range of stage in mm
 STEP_MM = 0.5                  # move in 1 mm increments
 STEPS_PER_MM = int(1e-3/(0.5e-9*8))
 
@@ -38,7 +38,7 @@ SAVE_FOLDER = "scan_images"
 # HELPERS
 # ==========================================================
 def mm_to_steps(mm):
-    return int(mm * STEPS_PER_MM)
+    return -int(mm * STEPS_PER_MM)
 
 
 def wait_until_position_reached(motor):
@@ -47,19 +47,16 @@ def wait_until_position_reached(motor):
 
 
 def save_image(camera, filename):
-    with camera.RetrieveResult(GRAB_TIMEOUT) as result:
-        if result.GrabSucceeded():
-            img = pylon.PylonImage()
-            img.AttachGrabResultBuffer(result)
+    result = camera.GrabOne(3000)
 
-            if platform.system() == "Windows":
-                img.Save(pylon.ImageFileFormat_Png, filename)
-            else:
-                img.Save(pylon.ImageFileFormat_Png, filename)
+    if not result.GrabSucceeded():
+        raise RuntimeError("Grab failed")
 
-            img.Release()
-        else:
-            raise RuntimeError("Image grab failed")
+    img = pylon.PylonImage()
+    img.AttachGrabResultBuffer(result)
+    img.Save(pylon.ImageFileFormat_Png, filename)
+    img.Release()
+
 
 
 # ==========================================================
@@ -73,8 +70,9 @@ def main():
     # ---------------- Camera Setup ----------------
     tlf = pylon.TlFactory.GetInstance()
     cam = pylon.InstantCamera(tlf.CreateFirstDevice())
+
     cam.Open()
-    cam.StartGrabbing()
+
 
     # ---------------- Motor Setup -----------------
     connection_manager = ConnectionManager(

@@ -1,151 +1,138 @@
 """
-Sweep motor using ROTATE only (no move_to), stop every 1 mm, capture image.
+Basler / pypylon Airy Disk Search Script
+---------------------------------------
+This script sweeps through several camera settings that strongly affect
+Airy disk visibility:
 
-Because move_to is unreliable on your setup, this version uses:
-- rotate(speed)
-- monitor actual_position
-- stop()
+- Exposure time
+- Gain
+- Pixel format (if supported)
+- Binning (if supported)
 
-It rotates forward through the full travel, stopping every 1 mm.
+Instead of saving images, it displays them in a matplotlib grid so you can
+visually compare settings and identify the sharpest Airy disk pattern.
 
-EDIT THESE SETTINGS:
-- COM_PORT
-- AXIS_INDEX
-- FULL_RANGE_MM
-- STEPS_PER_MM   <-- critical calibration value
+Requirements:
+    pip install pypylon matplotlib numpy
 """
 
-import os
-import time
-import platform
 from pypylon import pylon
-import pytrinamic
-from pytrinamic.connections import ConnectionManager
-from pytrinamic.modules import TMCM6110
+import matplotlib.pyplot as plt
+import numpy as np
+import itertools
+import math
 
-# ==================================================
+# -------------------------------------------------
 # USER SETTINGS
-# ==================================================
-COM_PORT = "COM6"
-AXIS_INDEX = 1
+# -------------------------------------------------
 
-FULL_RANGE_MM = 100
-STEP_MM = 1
+# Try combinations of these settings
+EXPOSURES_US = [100, 300, 1000, 3000, 10000]
+GAINS_DB = [0, 6, 12]
 
-STEPS_PER_MM = 2560      # must match your mechanics
-ROTATE_SPEED = 1500      # tune as needed
+# Optional if camera supports it
+BINNINGS = [1, 2]
 
-SAVE_FOLDER = "scan_images"
-SETTLE_TIME = 0.4
-GRAB_TIMEOUT = 3000
+# Number of images to display
+MAX_PLOTS = 12
 
-# ==================================================
+# -------------------------------------------------
+# CAMERA SETUP
+# -------------------------------------------------
+
+tlf = pylon.TlFactory.GetInstance()
+cam = pylon.InstantCamera(tlf.CreateFirstDevice())
+
+cam.Open()
+
+# Continuous acquisition mode
+cam.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+
+converter = pylon.ImageFormatConverter()
+converter.OutputPixelFormat = pylon.PixelType_Mono8
+converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
+
+# -------------------------------------------------
 # HELPERS
-# ==================================================
-def mm_to_steps(mm):
-    return int(mm * STEPS_PER_MM)
+# -------------------------------------------------
 
+def try_set(node, value):
+    try:
+        node.SetValue(value)
+        return True
+    except Exception:
+        return False
 
-def save_image(camera, filename):
-    with camera.RetrieveResult(GRAB_TIMEOUT) as result:
-        if not result.GrabSucceeded():
-            raise RuntimeError("Camera grab failed")
+def get_image():
+    result = cam.RetrieveResult(3000, pylon.TimeoutHandling_ThrowException)
 
-        img = pylon.PylonImage()
-        img.AttachGrabResultBuffer(result)
-        img.Save(pylon.ImageFileFormat_Png, filename)
-        img.Release()
-
-
-def rotate_until_position(motor, target_steps, speed):
-    """
-    Rotate motor until encoder/actual_position reaches target_steps.
-    Uses only rotate() + stop()
-    """
-    current = motor.actual_position
-
-    if target_steps > current:
-        motor.rotate(abs(speed))
-        while motor.actual_position < target_steps:
-            time.sleep(0.01)
-
+    if result.GrabSucceeded():
+        img = converter.Convert(result)
+        arr = img.GetArray()
+        result.Release()
+        return arr
     else:
-        motor.rotate(-abs(speed))
-        while motor.actual_position > target_steps:
-            time.sleep(0.01)
+        result.Release()
+        return None
 
-    motor.stop()
+# -------------------------------------------------
+# BUILD TEST LIST
+# -------------------------------------------------
 
+tests = list(itertools.product(EXPOSURES_US, GAINS_DB, BINNINGS))
+tests = tests[:MAX_PLOTS]
 
-# ==================================================
-# MAIN
-# ==================================================
-def main():
-    os.makedirs(SAVE_FOLDER, exist_ok=True)
+n = len(tests)
+cols = 3
+rows = math.ceil(n / cols)
 
-    # ---------------- Camera ----------------
-    tlf = pylon.TlFactory.GetInstance()
-    cam = pylon.InstantCamera(tlf.CreateFirstDevice())
-    cam.Open()
-    cam.StartGrabbing()
+fig, axes = plt.subplots(rows, cols, figsize=(14, 4 * rows))
+axes = np.array(axes).reshape(-1)
 
-    # ---------------- Motor -----------------
-    pytrinamic.show_info()
+# -------------------------------------------------
+# RUN TESTS
+# -------------------------------------------------
 
-    connection_manager = ConnectionManager(
-        f"--interface usb_tmcl --port {COM_PORT}"
+for idx, (exp, gain, binning) in enumerate(tests):
+
+    # Exposure
+    try_set(cam.ExposureTime, exp)
+
+    # Gain
+    if hasattr(cam, "Gain"):
+        try_set(cam.Gain, gain)
+
+    # Binning if available
+    if hasattr(cam, "BinningHorizontal"):
+        try_set(cam.BinningHorizontal, binning)
+
+    if hasattr(cam, "BinningVertical"):
+        try_set(cam.BinningVertical, binning)
+
+    img = get_image()
+
+    ax = axes[idx]
+
+    if img is not None:
+        ax.imshow(img, cmap="gray")
+    else:
+        ax.text(0.5, 0.5, "Grab Failed", ha="center", va="center")
+
+    ax.set_title(
+        f"Exp={exp} us\nGain={gain} dB\nBin={binning}"
     )
+    ax.axis("off")
 
-    with connection_manager.connect() as interface:
-        module = TMCM6110(interface)
-        motor = module.motors[AXIS_INDEX]
+# Hide unused axes
+for j in range(n, len(axes)):
+    axes[j].axis("off")
 
-        # Drive settings
-        motor.drive_settings.max_current = 200
-        motor.drive_settings.standby_current = 0
-        motor.drive_settings.boost_current = 0
-        motor.drive_settings.microstep_resolution = (
-            motor.ENUM.microstep_resolution_256_microsteps
-        )
+plt.tight_layout()
+plt.show()
 
-        motor.max_acceleration = 1000
-        motor.max_velocity = 1000
+# -------------------------------------------------
+# CLEANUP
+# -------------------------------------------------
 
-        # Zero current location
-        motor.actual_position = 0
-
-        total_images = int(FULL_RANGE_MM / STEP_MM) + 1
-
-        print("Starting forward sweep...")
-
-        for i in range(total_images):
-            pos_mm = i * STEP_MM
-            target_steps = mm_to_steps(pos_mm)
-
-            print(f"Moving to {pos_mm:.1f} mm")
-            rotate_until_position(motor, target_steps, ROTATE_SPEED)
-
-            time.sleep(SETTLE_TIME)
-
-            filename = os.path.join(
-                SAVE_FOLDER,
-                f"img_{i:04d}_{pos_mm:.1f}mm.png"
-            )
-
-            print("Capturing", filename)
-            save_image(cam, filename)
-
-        print("Sweep complete.")
-
-        # Optional return home
-        print("Returning to zero...")
-        rotate_until_position(motor, 0, ROTATE_SPEED)
-
-    cam.StopGrabbing()
-    cam.Close()
-
-    print("Done.")
-
-
-if __name__ == "__main__":
-    main()
+cam.StopGrabbing()
+cam.Close()
