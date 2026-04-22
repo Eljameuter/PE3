@@ -12,7 +12,7 @@ Available image formats are     (depending on platform):
 Basler / pypylon Airy Disk Search Script
 ---------------------------------------
 This script sweeps through several camera settings that strongly affect
-Airy disk visibility:
+airy disk visibility:
 
 - Exposure time
 - Gain
@@ -23,7 +23,7 @@ Instead of saving images, it displays them in a matplotlib grid so you can
 visually compare settings and identify the sharpest Airy disk pattern.
 
 Requirements:
-    pip install pypylon matplotlib numpy
+pip install pypylon matplotlib numpy
 """
 
 from pypylon import pylon

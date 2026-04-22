@@ -14,7 +14,7 @@ time = np.arange(0, record_time, dt)
 
 
 LED1_voltage = 0             # initial lens position
-tau = 0.005                    # LED response time constant
+tau = 0.005                  # LED response time constant
 
 # Disturbance LED: step from 0.4 V → 0.6 V at t = 0.05 s
 def disturbance(t):
@@ -77,17 +77,12 @@ with connection_manager.connect() as my_interface:
     lens_motor.drive_settings.boost_current = 0
     lens_motor.drive_settings.microstep_resolution = lens_motor.ENUM.microstep_resolution_256_microsteps
     print(lens_motor.drive_settings)
-    lens_motor.drive_settings.max_current = 200
-    lens_motor.drive_settings.standby_current = 0
-    lens_motor.drive_settings.boost_current = 0
-    lens_motor.drive_settings.microstep_resolution = lens_motor.ENUM.microstep_resolution_256_microsteps
-    print(lens_motor.drive_settings)
 
     # preparing linear ramp settings
     lens_motor.max_acceleration = 1000
     lens_motor.max_velocity = 1000
-    lens_motor.max_acceleration = 1000
-    lens_motor.max_velocity = 1000
+    
+    # np.clip() ---> maximum position! 
 
     # reset actual position
     lens_motor.actual_position = 0
