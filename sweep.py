@@ -28,12 +28,11 @@ COM_PORT = "COM6"
 AXIS_INDEX = 1                 # motor index used in your example
 FULL_RANGE_MM = 20           # total travel range of stage in mm
 STEP_MM = 1                  # move in 1 mm increments
-STEPS_PER_MM = 1/5e-7          # <-- CHANGE THIS to match your hardware
-SAVE_FOLDER = "scan_images"
+STEPS_PER_MM = 1/5e-7
 
 SETTLE_TIME = 0.05             # seconds after move before image capture
 GRAB_TIMEOUT = 3000           # ms
-
+SAVE_FOLDER = "scan_images"
 # ==========================================================
 # HELPERS
 # ==========================================================
