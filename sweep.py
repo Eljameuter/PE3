@@ -24,7 +24,7 @@ from pytrinamic.modules import TMCM6110
 # ==========================================================
 # USER SETTINGS
 # ==========================================================
-COM_PORT = "COM3"
+COM_PORT = "COM6"
 AXIS_INDEX = 0                 # motor index used in your example
 FULL_RANGE_MM = 10          # total travel range of stage in mm
 STEP_MM = 0.5                  # move in 1 mm increments
@@ -72,7 +72,7 @@ def main():
     cam = pylon.InstantCamera(tlf.CreateFirstDevice())
 
     cam.Open()
-
+    cam.ExposureTime.SetValue(5000)
 
     # ---------------- Motor Setup -----------------
     connection_manager = ConnectionManager(

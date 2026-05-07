@@ -54,7 +54,7 @@ with connection_manager.connect() as my_interface:
     motor_0.move_by(motor_0.actual_position)
 
     # wait till  position_reached
-    while not (motor_0.get_position_reached() and motor_1.get_position_reached()):
+    while not (motor_0.get_position_reached()):
         print("target position motor_0: " + str(motor_0.target_position) + " actual position motor_0: " + str(
             motor_0.actual_position))
 
