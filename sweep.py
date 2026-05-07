@@ -32,7 +32,7 @@ STEPS_PER_MM = int(1e-3/(0.5e-9*8))
 
 SETTLE_TIME = 0.5             # seconds after move before image capture
 GRAB_TIMEOUT = 3000           # ms
-SAVE_FOLDER = "14420705scan_images"
+SAVE_FOLDER = "1522705scan_images"
 
 # ==========================================================
 # HELPERS
@@ -72,7 +72,7 @@ def main():
     cam = pylon.InstantCamera(tlf.CreateFirstDevice())
 
     cam.Open()
-    cam.ExposureTime.SetValue(5000)
+    cam.ExposureTime.SetValue(1000)
 
     # ---------------- Motor Setup -----------------
     connection_manager = ConnectionManager(
