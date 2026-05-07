@@ -32,7 +32,7 @@ STEPS_PER_MM = int(1e-3/(0.5e-9*8))
 
 SETTLE_TIME = 0.5             # seconds after move before image capture
 GRAB_TIMEOUT = 3000           # ms
-SAVE_FOLDER = "scan_images"
+SAVE_FOLDER = "14420705scan_images"
 
 # ==========================================================
 # HELPERS
