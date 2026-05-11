@@ -12,7 +12,7 @@ EDIT THESE VALUES BEFORE RUNNING:
 Requirements:
 pip install pypylon pytrinamic
 """
-
+from datetime import datetime
 import os
 import time
 import platform
@@ -32,7 +32,7 @@ STEPS_PER_MM = int(1e-3/(0.5e-9*8))
 
 SETTLE_TIME = 0.5             # seconds after move before image capture
 GRAB_TIMEOUT = 3000           # ms
-SAVE_FOLDER = "1522705scan_images"
+
 
 # ==========================================================
 # HELPERS
@@ -63,16 +63,16 @@ def save_image(camera, filename):
 # MAIN
 # ==========================================================
 def main():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    SAVE_FOLDER = f"{timestamp}_scan_images"
     os.makedirs(SAVE_FOLDER, exist_ok=True)
-
     pytrinamic.show_info()
 
     # ---------------- Camera Setup ----------------
     tlf = pylon.TlFactory.GetInstance()
     cam = pylon.InstantCamera(tlf.CreateFirstDevice())
-
     cam.Open()
-    cam.ExposureTime.SetValue(1000)
+
 
     # ---------------- Motor Setup -----------------
     connection_manager = ConnectionManager(
@@ -138,4 +138,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+     main()

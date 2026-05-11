@@ -13,7 +13,7 @@ import pytrinamic
 from pytrinamic.connections import ConnectionManager
 from pytrinamic.modules import TMCM6110
 from scipy.ndimage import convolve
-
+import pandas as pd
 from datetime import datetime
 import numpy as np
 import time
@@ -53,10 +53,7 @@ pip install pypylon pytrinamic
 # ==========================================================
 # PID SETTINGS
 # ==========================================================
-set_point = 619013.0 # signal
-K_P = 0.2
-K_I = 0 
-K_D = 0 
+set_point = 550000 # signal
 T = 120 # seconds
 dt = 0.5 # seconds
 
@@ -74,7 +71,7 @@ STEPS_PER_MM = int(1e-3/(0.5e-9*8))
 SETTLE_TIME = 0.5           # seconds after move before image capture
 GRAB_TIMEOUT = 3000         # ms
 SAVE_FOLDER = "scan_images"
-
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 # ==========================================================
 # HELPERS
 # ==========================================================
@@ -91,7 +88,8 @@ def save_image(camera, filename):
 
 def sum_around_brightest(path, radius=40):
     img = np.array(Image.open(path).convert("L"), dtype=np.float32)
-
+    #dark = np.array(Image.open("Dark/dark_1.jpeg").convert("L"), dtype=np.float32)
+    #img = img - dark
     # Sum of 5 consecutive pixels in each row → find the peak window center
     kernel = np.ones((5, 5))
     smoothed = convolve(img, kernel, mode='reflect')
@@ -125,7 +123,10 @@ def listen_for_panic():
 # ==========================================================
 # MAIN
 # ==========================================================
-def main():
+def pid(kp,kd,ki):
+    K_P = kp
+    K_D = kd
+    K_I = ki
     os.makedirs(SAVE_FOLDER, exist_ok=True)
 
     pytrinamic.show_info()
@@ -135,7 +136,6 @@ def main():
     cam = pylon.InstantCamera(tlf.CreateFirstDevice())
 
     cam.Open()
-
     # ---------------- Start panic listener ----------------
     listener = threading.Thread(target=listen_for_panic, daemon=True)
     listener.start()
@@ -186,11 +186,11 @@ def main():
             elapsed_time = now - start_time
             elapsed_seconds = elapsed_time.total_seconds()
             times.append(elapsed_seconds)
-            print(elapsed_seconds)
+            print(f" elapsed time: {elapsed_seconds}")
             # determine signal!
             signal, pos = sum_around_brightest(filename)
             signals.append(signal)
-            print(signal)
+            print(f" signal: {signal}")
             # determine control function
             error = set_point - signal 
             errors.append(error)
@@ -200,11 +200,11 @@ def main():
             D = K_D * (errors[i] - errors[i - 1]) / dt if i > 0 else 0
             control = P + I + D
             control = np.clip(control, -STEPS_PER_MM, STEPS_PER_MM)
-            print(control)
+            print(f" control: {control}")
             new_pos = int(float(motor.actual_position)+control)
             new_pos = np.clip(new_pos, 0,10*STEPS_PER_MM)
             positions.append(new_pos)
-            print(new_pos)
+            print(f" new position: {new_pos}")
             # apply control function 
             print("Move to new position: " + str(new_pos))
             motor.move_to(int(new_pos))
@@ -244,9 +244,7 @@ def main():
         fig.suptitle("PID Response", fontsize=13, fontweight="bold")
         plt.tight_layout()
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         fig.savefig(f"PID_storage/pid_response_{timestamp}.png", dpi=150, bbox_inches="tight")
-        plt.show()
         # --------------------------------------------------
         # Return home
         # --------------------------------------------------
@@ -256,6 +254,167 @@ def main():
     cam.Close()
 
     print("Done.")
+    return times, signals, positions, errors
 
-if __name__ == "__main__":
-    main()
+coeff_values = [0.1,0.5] #np.arange(0.1, 0.3, 0.1)
+
+COMB_DIR = "combined_data_rq1"
+
+
+def rq1_collect_statistics(n_repeats=3):
+
+    os.makedirs(COMB_DIR, exist_ok=True)
+
+    stats = {
+        m: {
+            "coeff": [],
+            "mean": [],
+            "stdev": [],
+            "mean_err": [],
+            "stdev_err": []
+        }
+        for m in ["P", "I", "D"]
+    }
+
+    all_traces = {
+        m: {}
+        for m in ["P", "I", "D"]
+    }
+
+    for mode in ["P", "I", "D"]:
+
+        for value in coeff_values:
+
+            signal_runs = []
+            time_axis = None
+
+            for repeat in range(n_repeats):
+
+                kp, ki, kd = 0, 0, 0
+
+                if mode == "P":
+                    kp = value
+                elif mode == "I":
+                    ki = value
+                elif mode == "D":
+                    kd = value
+
+                print(f"Running {mode}={value:.2f}, repeat {repeat}")
+
+                times, signals, positions, errors = pid(kp, kd, ki)
+
+                signal_runs.append(signals)
+
+                if time_axis is None:
+                    time_axis = np.array(times)
+
+            signal_runs = np.array(signal_runs)
+
+            mean_signal = np.mean(signal_runs, axis=0)
+            std_signal = np.std(signal_runs, axis=0, ddof=1)
+
+            N = len(mean_signal)
+
+            mean_val = np.mean(mean_signal)
+            sigma_val = np.std(mean_signal, ddof=1)
+
+            sigma_mean = (1 / N) * np.sqrt(np.sum(std_signal ** 2))
+            sigma_stdev = sigma_val / np.sqrt(2 * (N - 1))
+
+            stats[mode]["coeff"].append(value)
+            stats[mode]["mean"].append(mean_val)
+            stats[mode]["stdev"].append(sigma_val)
+            stats[mode]["mean_err"].append(sigma_mean)
+            stats[mode]["stdev_err"].append(sigma_stdev)
+
+            # Store traces for plotting
+            all_traces[mode][value] = {
+                "time": time_axis,
+                "mean_signal": mean_signal,
+                "std_signal": std_signal
+            }
+            # Save final averaged result
+            pd.DataFrame({
+                "time": time_axis,
+                "signal": mean_signal,
+                "stdev": std_signal
+            }).to_csv(
+                f"{COMB_DIR}/{timestamp}_{mode}_{value:.2f}.csv",
+                index=False
+            )
+
+    return stats, all_traces
+
+def rq1_plot_signals(all_traces):
+
+    for mode, label in zip(["P", "I", "D"], ["Kp", "Ki", "Kd"]):
+        plt.figure(figsize=(8, 5))
+
+        for value, trace in all_traces[mode].items():
+
+            plt.plot(
+                trace["time"],
+                trace["mean_signal"],
+                label=f"{label}={value:.2f}"
+            )
+
+        plt.xlabel("Time (s)")
+        plt.ylabel("Signal")
+        plt.title(f"Signal vs Time ({label} sweep)")
+        plt.grid()
+        plt.legend()
+
+        plt.tight_layout()
+
+        plt.savefig(f"rq1_signal_vs_time_{mode}_{timestamp}.pdf")
+
+        plt.show()
+
+def rq1_plot_statistics(stats):
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    for mode, label in zip(["P", "I", "D"], ["Kp", "Ki", "Kd"]):
+        axes[0].axhline(set_point, color="black", linewidth=1, linestyle="--", label="Set point")
+        axes[0].errorbar(
+            stats[mode]["coeff"],
+            stats[mode]["mean"],
+            yerr=stats[mode]["mean_err"],
+            label=label,
+            capsize=3
+        )
+
+        axes[1].errorbar(
+            stats[mode]["coeff"],
+            np.array(stats[mode]["stdev"])/np.array(stats[mode]["mean"]),
+            yerr=stats[mode]["stdev_err"],
+            label=label,
+            capsize=3
+        )
+
+    axes[0].set_title("Mean Signal vs PID Coefficient")
+    axes[1].set_title("Relative Signal Std Dev vs PID Coefficient")
+
+    axes[0].set_ylabel("Mean signal")
+    axes[1].set_ylabel("Relative signal standard deviation")
+
+    for ax in axes:
+        ax.set_xlabel("Coefficient value")
+        ax.grid()
+        ax.legend()
+
+    plt.tight_layout()
+
+    plt.savefig(f"rq1_statistics_{timestamp}.pdf")
+
+    plt.show()
+
+def run_rq1():
+
+    stats, all_traces = rq1_collect_statistics(n_repeats=2)
+
+    rq1_plot_statistics(stats)
+
+    rq1_plot_signals(all_traces)
+
+run_rq1()
