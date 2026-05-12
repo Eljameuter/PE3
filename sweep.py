@@ -72,6 +72,7 @@ def main():
     tlf = pylon.TlFactory.GetInstance()
     cam = pylon.InstantCamera(tlf.CreateFirstDevice())
     cam.Open()
+    cam.ExposureTime.SetValue(10000)  # 10000 microsecond
 
 
     # ---------------- Motor Setup -----------------

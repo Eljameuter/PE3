@@ -53,7 +53,7 @@ pip install pypylon pytrinamic
 # ==========================================================
 # PID SETTINGS
 # ==========================================================
-set_point = 550000 # signal
+set_point = 600000 # signal 629392
 T = 120 # seconds
 dt = 0.5 # seconds
 
@@ -136,6 +136,7 @@ def pid(kp,kd,ki):
     cam = pylon.InstantCamera(tlf.CreateFirstDevice())
 
     cam.Open()
+
     # ---------------- Start panic listener ----------------
     listener = threading.Thread(target=listen_for_panic, daemon=True)
     listener.start()
@@ -256,7 +257,7 @@ def pid(kp,kd,ki):
     print("Done.")
     return times, signals, positions, errors
 
-coeff_values = [0.1,0.5] #np.arange(0.1, 0.3, 0.1)
+coeff_values = np.linspace(0.1,3,1)
 
 COMB_DIR = "combined_data_rq1"
 
@@ -273,15 +274,15 @@ def rq1_collect_statistics(n_repeats=3):
             "mean_err": [],
             "stdev_err": []
         }
-        for m in ["P", "I", "D"]
+        for m in ["P", "I"]
     }
 
     all_traces = {
         m: {}
-        for m in ["P", "I", "D"]
+        for m in ["P", "I"]
     }
 
-    for mode in ["P", "I", "D"]:
+    for mode in ["P", "I"]:
 
         for value in coeff_values:
 
@@ -296,8 +297,7 @@ def rq1_collect_statistics(n_repeats=3):
                     kp = value
                 elif mode == "I":
                     ki = value
-                elif mode == "D":
-                    kd = value
+
 
                 print(f"Running {mode}={value:.2f}, repeat {repeat}")
 
@@ -308,36 +308,42 @@ def rq1_collect_statistics(n_repeats=3):
                 if time_axis is None:
                     time_axis = np.array(times)
 
-            signal_runs = np.array(signal_runs)
+            signal_runs = np.array(signal_runs)  # shape: (n_repeats, T)
 
-            mean_signal = np.mean(signal_runs, axis=0)
-            std_signal = np.std(signal_runs, axis=0, ddof=1)
+            # Take second half of each repeat
+            half = signal_runs.shape[1] // 2
+            signal_runs_half = signal_runs[:, half:]  # shape: (n_repeats, T//2)
 
-            N = len(mean_signal)
+            # Mean and std of the second half for each repeat
+            repeat_means = np.mean(signal_runs_half, axis=1)  # shape: (n_repeats,)
+            repeat_stds = np.std(signal_runs_half, axis=1, ddof=1)  # shape: (n_repeats,)
 
-            mean_val = np.mean(mean_signal)
-            sigma_val = np.std(mean_signal, ddof=1)
+            # Mean of means and mean of stds across repeats
+            mean_val = np.mean(repeat_means)
+            stdev_val = np.mean(repeat_stds)
 
-            sigma_mean = (1 / N) * np.sqrt(np.sum(std_signal ** 2))
-            sigma_stdev = sigma_val / np.sqrt(2 * (N - 1))
+            mean_err = np.std(repeat_means)
+            stdev_err = np.std(repeat_stds)
 
             stats[mode]["coeff"].append(value)
             stats[mode]["mean"].append(mean_val)
-            stats[mode]["stdev"].append(sigma_val)
-            stats[mode]["mean_err"].append(sigma_mean)
-            stats[mode]["stdev_err"].append(sigma_stdev)
+            stats[mode]["stdev"].append(stdev_val)
+            stats[mode]["mean_err"].append(mean_err)
+            stats[mode]["stdev_err"].append(stdev_err)
+
+            # For plotting: use the full first signal
+            signal = signal_runs[0]
+
 
             # Store traces for plotting
             all_traces[mode][value] = {
                 "time": time_axis,
-                "mean_signal": mean_signal,
-                "std_signal": std_signal
+                "signal": signal,
             }
             # Save final averaged result
             pd.DataFrame({
                 "time": time_axis,
-                "signal": mean_signal,
-                "stdev": std_signal
+                "signal": signal,
             }).to_csv(
                 f"{COMB_DIR}/{timestamp}_{mode}_{value:.2f}.csv",
                 index=False
@@ -347,17 +353,16 @@ def rq1_collect_statistics(n_repeats=3):
 
 def rq1_plot_signals(all_traces):
 
-    for mode, label in zip(["P", "I", "D"], ["Kp", "Ki", "Kd"]):
+    for mode, label in zip(["P", "I"], ["Kp", "Ki"]):
         plt.figure(figsize=(8, 5))
 
         for value, trace in all_traces[mode].items():
-
             plt.plot(
                 trace["time"],
-                trace["mean_signal"],
+                trace["signal"],
                 label=f"{label}={value:.2f}"
             )
-
+        plt.axhline(set_point, color="black", linewidth=1, linestyle="--", label="Set point")
         plt.xlabel("Time (s)")
         plt.ylabel("Signal")
         plt.title(f"Signal vs Time ({label} sweep)")
@@ -374,7 +379,7 @@ def rq1_plot_statistics(stats):
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 5))
 
-    for mode, label in zip(["P", "I", "D"], ["Kp", "Ki", "Kd"]):
+    for mode, label in zip(["P", "I"], ["Kp", "Ki"]):
         axes[0].axhline(set_point, color="black", linewidth=1, linestyle="--", label="Set point")
         axes[0].errorbar(
             stats[mode]["coeff"],
@@ -387,7 +392,7 @@ def rq1_plot_statistics(stats):
         axes[1].errorbar(
             stats[mode]["coeff"],
             np.array(stats[mode]["stdev"])/np.array(stats[mode]["mean"]),
-            yerr=stats[mode]["stdev_err"],
+            yerr=np.array(stats[mode]["stdev_err"])/np.array(stats[mode]["mean"]),
             label=label,
             capsize=3
         )
@@ -417,4 +422,184 @@ def run_rq1():
 
     rq1_plot_signals(all_traces)
 
-run_rq1()
+#run_rq1()
+
+import itertools
+
+# --- RQ2 Grid Configuration ---
+kp_values = np.linspace(0, 3.0, 3)   # 3 values
+ki_values = np.linspace(0, 3.0, 3)   # 3 values
+kd_values = np.linspace(0, 3.0, 2)   # 2 values
+
+COMB_DIR_RQ2 = "combined_data_rq2"
+
+
+def rq2_collect_statistics(n_repeats=3):
+
+    os.makedirs(COMB_DIR_RQ2, exist_ok=True)
+
+    stats = {
+        "kp": [], "ki": [], "kd": [],
+        "mean": [], "stdev": [],
+        "mean_err": [], "stdev_err": []
+    }
+
+    all_traces = {}
+
+    for kp, ki, kd in itertools.product(kp_values, ki_values, kd_values):
+
+        signal_runs = []
+        time_axis = None
+
+        for repeat in range(n_repeats):
+
+            print(f"Running Kp={kp:.2f}, Ki={ki:.2f}, Kd={kd:.2f}, repeat {repeat}")
+
+            times, signals, positions, errors = pid(kp, kd, ki)
+
+            signal_runs.append(signals)
+
+            if time_axis is None:
+                time_axis = np.array(times)
+
+        signal_runs = np.array(signal_runs)  # shape: (n_repeats, T)
+
+        # Take second half of each repeat
+        half = signal_runs.shape[1] // 2
+        signal_runs_half = signal_runs[:, half:]  # shape: (n_repeats, T//2)
+
+        # Mean and std of the second half for each repeat
+        repeat_means = np.mean(signal_runs_half, axis=1)  # shape: (n_repeats,)
+        repeat_stds = np.std(signal_runs_half, axis=1, ddof=1)  # shape: (n_repeats,)
+
+        # Mean of means and mean of stds across repeats
+        mean_val = np.mean(repeat_means)
+        stdev_val = np.mean(repeat_stds)
+
+        mean_err = np.std(repeat_means)
+        stdev_err = np.std(repeat_stds)
+
+        signal = signal_runs[0]
+
+        stats["kp"].append(kp)
+        stats["ki"].append(ki)
+        stats["kd"].append(kd)
+        stats["mean"].append(mean_val)
+        stats["stdev"].append(stdev_val)
+        stats["mean_err"].append(mean_err)
+        stats["stdev_err"].append(stdev_err)
+
+        key = (kp, ki, kd)
+        all_traces[key] = {
+            "time":        time_axis,
+            "signal": signal
+        }
+
+        pd.DataFrame({
+            "time":   time_axis,
+            "signal": signal
+        }).to_csv(
+            f"{COMB_DIR_RQ2}/{timestamp}_kp{kp:.2f}_ki{ki:.2f}_kd{kd:.2f}.csv",
+            index=False
+        )
+
+    return stats, all_traces
+
+
+def rq2_plot_signals(all_traces):
+    """
+    One figure per Kd value; each figure shows all (Kp, Ki) combinations.
+    """
+    for kd in kd_values:
+
+        plt.figure(figsize=(10, 6))
+
+        for (kp, ki, kd_), trace in all_traces.items():
+            if not np.isclose(kd_, kd):
+                continue
+            plt.plot(
+                trace["time"],
+                trace["signal"],
+                label=f"Kp={kp:.2f}, Ki={ki:.2f}"
+            )
+
+
+        plt.xlabel("Time (s)")
+        plt.ylabel("Signal")
+        plt.title(f"Signal vs Time (Kd={kd:.2f} sweep)")
+        plt.grid()
+        plt.legend(fontsize=7, ncol=2)
+        plt.tight_layout()
+        plt.savefig(f"rq2_signal_vs_time_kd{kd:.2f}_{timestamp}.pdf")
+        plt.show()
+
+
+def rq2_plot_statistics(stats):
+    """
+    Heatmaps of mean and relative std dev over the (Kp, Ki) grid,
+    one column per Kd value.
+    """
+    import pandas as pd
+
+    df = pd.DataFrame(stats)
+
+    fig, axes = plt.subplots(
+        2, len(kd_values),
+        figsize=(6 * len(kd_values), 10),
+        squeeze=False
+    )
+
+    for col, kd in enumerate(kd_values):
+
+        sub = df[np.isclose(df["kd"], kd)]
+        pivot_mean  = sub.pivot(index="ki", columns="kp", values="mean")
+        pivot_rstd  = sub.pivot(
+            index="ki", columns="kp",
+            values="stdev"
+        )
+        pivot_rstd  = pivot_rstd / pivot_mean   # relative std dev
+
+        im0 = axes[0, col].imshow(
+            pivot_mean.values,
+            aspect="auto",
+            origin="lower"
+        )
+        axes[0, col].set_title(f"Mean Signal (Kd={kd:.2f})")
+        axes[0, col].set_xlabel("Kp")
+        axes[0, col].set_ylabel("Ki")
+        axes[0, col].set_xticks(range(len(kp_values)))
+        axes[0, col].set_xticklabels([f"{v:.2f}" for v in pivot_mean.columns])
+        axes[0, col].set_yticks(range(len(ki_values)))
+        axes[0, col].set_yticklabels([f"{v:.2f}" for v in pivot_mean.index])
+        plt.colorbar(im0, ax=axes[0, col])
+
+        im1 = axes[1, col].imshow(
+            pivot_rstd.values,
+            aspect="auto",
+            origin="lower"
+        )
+        axes[1, col].set_title(f"Relative Std Dev (Kd={kd:.2f})")
+        axes[1, col].set_xlabel("Kp")
+        axes[1, col].set_ylabel("Ki")
+        axes[1, col].set_xticks(range(len(kp_values)))
+        axes[1, col].set_xticklabels([f"{v:.2f}" for v in pivot_rstd.columns])
+        axes[1, col].set_yticks(range(len(ki_values)))
+        axes[1, col].set_yticklabels([f"{v:.2f}" for v in pivot_rstd.index])
+        plt.colorbar(im1, ax=axes[1, col])
+
+    plt.suptitle("RQ2: PID Grid Search Statistics", fontsize=14)
+    plt.tight_layout()
+    plt.savefig(f"rq2_statistics_{timestamp}.pdf")
+    plt.show()
+
+
+def run_rq2():
+
+    stats, all_traces = rq2_collect_statistics(n_repeats=2)
+
+    rq2_plot_statistics(stats)
+
+    rq2_plot_signals(all_traces)
+
+
+run_rq2()
