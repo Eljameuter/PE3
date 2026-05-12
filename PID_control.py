@@ -332,19 +332,16 @@ def rq1_collect_statistics(n_repeats=3):
             stats[mode]["stdev_err"].append(stdev_err)
 
             # For plotting: use the full first signal
-            signal = signal_runs[0]
 
-
-            # Store traces for plotting
             all_traces[mode][value] = {
                 "time": time_axis,
-                "signal": signal,
             }
-            # Save final averaged result
-            pd.DataFrame({
-                "time": time_axis,
-                "signal": signal,
-            }).to_csv(
+
+            for i in range(n_repeats):
+                all_traces[mode][value][f"signal_{i + 1}"] = signal_runs[i]
+
+            # Save all repeats to CSV
+            pd.DataFrame(all_traces[mode][value]).to_csv(
                 f"{COMB_DIR}/{timestamp}_{mode}_{value:.2f}.csv",
                 index=False
             )
@@ -359,7 +356,7 @@ def rq1_plot_signals(all_traces):
         for value, trace in all_traces[mode].items():
             plt.plot(
                 trace["time"],
-                trace["signal"],
+                trace["signal_1"],
                 label=f"{label}={value:.2f}"
             )
         plt.axhline(set_point, color="black", linewidth=1, linestyle="--", label="Set point")
@@ -490,19 +487,19 @@ def rq2_collect_statistics(n_repeats=3):
         stats["stdev_err"].append(stdev_err)
 
         key = (kp, ki, kd)
+
         all_traces[key] = {
-            "time":        time_axis,
-            "signal": signal
+            "time": time_axis,
         }
 
-        pd.DataFrame({
-            "time":   time_axis,
-            "signal": signal
-        }).to_csv(
+        for i in range(n_repeats):
+            all_traces[key][f"signal_{i + 1}"] = signal_runs[i]
+
+        # Save all repeats to CSV
+        pd.DataFrame(all_traces[key]).to_csv(
             f"{COMB_DIR_RQ2}/{timestamp}_kp{kp:.2f}_ki{ki:.2f}_kd{kd:.2f}.csv",
             index=False
         )
-
     return stats, all_traces
 
 
@@ -519,7 +516,7 @@ def rq2_plot_signals(all_traces):
                 continue
             plt.plot(
                 trace["time"],
-                trace["signal"],
+                trace["signal_1"],
                 label=f"Kp={kp:.2f}, Ki={ki:.2f}"
             )
 
