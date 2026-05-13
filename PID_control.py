@@ -71,7 +71,7 @@ STEPS_PER_MM = int(1e-3/(0.5e-9*8))
 SETTLE_TIME = 0.5           # seconds after move before image capture
 GRAB_TIMEOUT = 3000         # ms
 SAVE_FOLDER = "scan_images"
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+timestamp ="20260513_090826" #_kp10.00_ki0.00_kd0.00.csv datetime.now().strftime("%Y%m%d_%H%M%S")
 # ==========================================================
 # HELPERS
 # ==========================================================
@@ -88,8 +88,7 @@ def save_image(camera, filename):
 
 def sum_around_brightest(path, radius=40):
     img = np.array(Image.open(path).convert("L"), dtype=np.float32)
-    #dark = np.array(Image.open("Dark/dark_1.jpeg").convert("L"), dtype=np.float32)
-    #img = img - dark
+
     # Sum of 5 consecutive pixels in each row → find the peak window center
     kernel = np.ones((5, 5))
     smoothed = convolve(img, kernel, mode='reflect')
@@ -257,7 +256,7 @@ def pid(kp,kd,ki):
     print("Done.")
     return times, signals, positions, errors
 
-coeff_values = np.linspace(0.1,3,1)
+coeff_values = np.linspace(0.1,20,5)
 
 COMB_DIR = "combined_data_rq1"
 
@@ -424,8 +423,8 @@ def run_rq1():
 import itertools
 
 # --- RQ2 Grid Configuration ---
-kp_values = np.linspace(0, 3.0, 3)   # 3 values
-ki_values = np.linspace(0, 3.0, 3)   # 3 values
+kp_values = np.linspace(10, 20, 2)   # 3 values
+ki_values = [0] #np.linspace(0, 20, 2)   # 3 values
 kd_values = np.linspace(0, 3.0, 2)   # 2 values
 
 COMB_DIR_RQ2 = "combined_data_rq2"
